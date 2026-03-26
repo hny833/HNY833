@@ -8,7 +8,7 @@
     :root{
       --bg: #0b0f14;
 
-      /* Base hex look */
+      /* ==== BASE HEX LOOK ==== */
       --hex-fill: rgba(255, 200, 0, 0.035);
       --hex-stroke: rgba(255, 200, 0, 0.11);
 
@@ -16,8 +16,8 @@
       --lit-fill: rgba(255, 190, 60, 0.30);
       --lit-stroke: rgba(255, 230, 160, 0.90);
 
-      /* ===== GLOW COLOUR: change this one value ===== */
-      --glow-colour: #F4C430; /* liturgical / honey gold */
+      /* ===== GLOW COLOUR ===== */
+      --glow-colour: #F4C430; /* honey gold */
       /* examples:
         --glow-colour: #FFD86B;  (honey)
         --glow-colour: #FFB347;  (warm candle)
@@ -40,14 +40,14 @@
       z-index: 0;
     }
 
-    /* Demo foreground content */
+    /* foreground content */
     .content {
       position: relative;
       z-index: 1;
       color: rgba(255,255,255,0.86);
       padding: 28px;
       max-width: 60ch;
-      pointer-events: none; /* so background always gets the pointer */
+      pointer-events: none; /* background always gets the pointer */
     }
 
     svg { width: 100%; height: 100%; display: block; }
@@ -94,7 +94,7 @@
     const svg = document.getElementById("hexSvg");
     const group = document.getElementById("hexGroup");
 
-    // ====== Controls you may want to tweak ======
+    // ====== Controls to Tweak =================
     const R = 22;                // hex radius (size)
     const INFLUENCE = 120;       // how far the cursor affects hexes (px)
     const ADD_STRENGTH = 0.22;   // how much intensity is added per move
@@ -102,7 +102,7 @@
     const MAX_INTENSITY = 1.0;   // cap
     // ===========================================
 
-    // Pointy-top hex geometry
+    // ==== Pointy-top hex geometry ====
     const W = Math.sqrt(3) * R;  // width
     const V = 1.5 * R;           // vertical spacing
 
@@ -150,14 +150,14 @@
     function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
     function renderHex(h) {
-      // Intensity controls: blend base -> lit and apply glow when above a threshold
+      // ==== INTENSITY CONTROL : Blend Base ====
       const a = h.a;
 
-      // Fill/stroke opacity ramps with intensity:
+      // ==== Fill/stroke opacity ramps with intensity ====
       const fillAlpha = 0.035 + a * 0.28;
       const strokeAlpha = 0.11 + a * 0.70;
 
-      // We set inline rgba so we can smoothly animate intensity without CSS classes
+      // Set inline rgba so we can smoothly animate intensity without CSS classes
       h.el.style.fill = `rgba(255, 190, 60, ${fillAlpha.toFixed(3)})`;
       h.el.style.stroke = `rgba(255, 230, 160, ${strokeAlpha.toFixed(3)})`;
 
@@ -178,7 +178,7 @@
         const d2 = dx*dx + dy*dy;
         if (d2 > r2) continue;
 
-        // Smooth falloff: closer hexes get more intensity
+        // ==== Smooth falloff: closer hexes get more intensity ====
         const t = 1 - (d2 / r2);        // 0..1
         const w = t * t;                // ease-in
         h.a = clamp01(h.a + ADD_STRENGTH * w);
