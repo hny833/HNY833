@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HNY833</title>
+  <style>
+    :root{
+      --bg: #0b0f14;
+
+      /* Base hex look */
+      --hex-fill: rgba(255, 200, 0, 0.035);
+      --hex-stroke: rgba(255, 200, 0, 0.11);
+
+      /* LIT colour (used for fill/stroke tint) */
+      --lit-fill: rgba(255, 190, 60, 0.30);
+      --lit-stroke: rgba(255, 230, 160, 0.90);
+
+      /* ===== GLOW COLOUR: change this one value ===== */
+      --glow-colour: #F4C430; /* liturgical / honey gold */
+      /* examples:
+        --glow-colour: #FFD86B;  (honey)
+        --glow-colour: #FFB347;  (warm candle)
+        --glow-colour: #7DF9FF;  (neon cyan)
+      */
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    /* Background sits behind content but still receives pointer events */
+    .bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    /* Demo foreground content */
+    .content {
+      position: relative;
+      z-index: 1;
+      color: rgba(255,255,255,0.86);
+      padding: 28px;
+      max-width: 60ch;
+      pointer-events: none; /* so background always gets the pointer */
+    }
+
+    svg { width: 100%; height: 100%; display: block; }
+
+    .hex {
+      fill: var(--hex-fill);
+      stroke: var(--hex-stroke);
+      stroke-width: 1;
+      opacity: 0.9;
+      transition: filter 120ms ease;
+      filter: none;
+      will-change: opacity;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="bg">
+    <svg id="hexSvg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <!-- Premium glow: colour is controlled via feFlood -->
+        <filter id="glow" x="-90%" y="-90%" width="280%" height="280%">
+          <feGaussianBlur stdDeviation="6" result="blur"/>
+          <feFlood id="glowFlood" flood-color="var(--glow-colour)" flood-opacity="0.85" result="colour"/>
+          <feComposite in="colour" in2="blur" operator="in" result="softGlow"/>
+          <feMerge>
+            <feMergeNode in="softGlow"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+      <g id="hexGroup"></g>
+    </svg>
+  </div>
+
+  <div class="content" align=center>
+		<h1 style="margin:0 0 8px 0; font-size: 48px; font-weight: 650;">HNY833</h1>
+		<p style="margin:0; line-height:1.4;">
+		Technology Solutions for Tomorrow.
+		</p>
+  </div>
+
+  <script>
+    const svg = document.getElementById("hexSvg");
+    const group = document.getElementById("hexGroup");
+
+    // ====== Controls you may want to tweak ======
+    const R = 22;                // hex radius (size)
+    const INFLUENCE = 120;       // how far the cursor affects hexes (px)
+    const ADD_STRENGTH = 0.22;   // how much intensity is added per move
+    const DECAY_PER_SEC = 1.25;  // intensity decay speed
+    const MAX_INTENSITY = 1.0;   // cap
+    // ===========================================
+
+    // Pointy-top hex geometry
+    const W = Math.sqrt(3) * R;  // width
+    const V = 1.5 * R;           // vertical spacing
+
+    let hexes = []; // {cx, cy, el, a}
+    let raf = null;
+    let lastT = performance.now();
+    let pointer = { x: null, y: null, inside: false };
+
+    function pointsForHex(cx, cy, r) {
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 180) * (60 * i - 30);
+        const x = cx + r * Math.cos(a);
+        const y = cy + r * Math.sin(a);
+        pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+      }
+      return pts.join(" ");
+    }
+
+    function buildGrid() {
+      group.innerHTML = "";
+      hexes = [];
+
+      const rect = svg.getBoundingClientRect();
+      const cols = Math.ceil(rect.width / W) + 3;
+      const rows = Math.ceil(rect.height / V) + 3;
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const xOffset = (row % 2) ? W / 2 : 0;
+          const cx = col * W + xOffset;
+          const cy = row * V;
+
+          const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          poly.setAttribute("points", pointsForHex(cx, cy, R));
+          poly.classList.add("hex");
+          group.appendChild(poly);
+
+          hexes.push({ cx, cy, el: poly, a: 0 });
+        }
+      }
+      renderAll();
+    }
+
+    function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+    function renderHex(h) {
+      // Intensity controls: blend base -> lit and apply glow when above a threshold
+      const a = h.a;
+
+      // Fill/stroke opacity ramps with intensity:
+      const fillAlpha = 0.035 + a * 0.28;
+      const strokeAlpha = 0.11 + a * 0.70;
+
+      // We set inline rgba so we can smoothly animate intensity without CSS classes
+      h.el.style.fill = `rgba(255, 190, 60, ${fillAlpha.toFixed(3)})`;
+      h.el.style.stroke = `rgba(255, 230, 160, ${strokeAlpha.toFixed(3)})`;
+
+      // Apply glow only when intensity is noticeable (saves a bit of work)
+      h.el.style.filter = a > 0.18 ? "url(#glow)" : "none";
+    }
+
+    function renderAll() {
+      for (const h of hexes) renderHex(h);
+    }
+
+    function addInfluence(px, py) {
+      const r2 = INFLUENCE * INFLUENCE;
+
+      for (const h of hexes) {
+        const dx = h.cx - px;
+        const dy = h.cy - py;
+        const d2 = dx*dx + dy*dy;
+        if (d2 > r2) continue;
+
+        // Smooth falloff: closer hexes get more intensity
+        const t = 1 - (d2 / r2);        // 0..1
+        const w = t * t;                // ease-in
+        h.a = clamp01(h.a + ADD_STRENGTH * w);
+      }
+    }
+
+    function tick(now) {
+      const dt = Math.min(0.05, (now - lastT) / 1000); // cap dt
+      lastT = now;
+
+      const decay = DECAY_PER_SEC * dt;
+
+      // Apply cursor influence (if inside)
+      if (pointer.inside && pointer.x != null && pointer.y != null) {
+        addInfluence(pointer.x, pointer.y);
+      }
+
+      // Decay + render
+      let anyActive = false;
+      for (const h of hexes) {
+        if (h.a > 0) {
+          h.a = Math.max(0, h.a - decay);
+          if (h.a > 0) anyActive = true;
+        }
+        renderHex(h);
+      }
+
+      // Keep animating if there’s activity or pointer is inside
+      if (anyActive || pointer.inside) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        raf = null;
+      }
+    }
+
+    function startAnim() {
+      if (!raf) {
+        lastT = performance.now();
+        raf = requestAnimationFrame(tick);
+      }
+    }
+
+    function setPointerFromEvent(e) {
+      const rect = svg.getBoundingClientRect();
+      pointer.x = e.clientX - rect.left;
+      pointer.y = e.clientY - rect.top;
+    }
+
+    // Build grid
+    buildGrid();
+    window.addEventListener("resize", buildGrid);
+
+    // Pointer events
+    svg.addEventListener("pointerenter", (e) => {
+      pointer.inside = true;
+      setPointerFromEvent(e);
+      startAnim();
+    });
+
+    svg.addEventListener("pointermove", (e) => {
+      pointer.inside = true;
+      setPointerFromEvent(e);
+      startAnim();
+    });
+
+    svg.addEventListener("pointerleave", () => {
+      pointer.inside = false;
+      // animation will naturally stop once everything decays
+      startAnim();
+    });
+  </script>
+</body>
+</html>
